@@ -185,6 +185,10 @@ function quickDates() {
 const initials = (name) => (/^[เแโใไ]/.test(name) ? name.slice(0, 2) : name.slice(0, 1));
 
 const memberName = (id) => S.members.find((m) => m.id === id)?.name || "ไม่ระบุคน";
+/** ชื่อคนทำทั้งหมดของงาน (งานหนึ่งทำร่วมกันได้หลายคน) */
+const ownersText = (t) => (t.owner_ids || []).map(memberName).join(", ") || "ไม่ระบุคน";
+const isOwner = (t, id) => (t.owner_ids || []).includes(id);
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
 const project = (id) => S.projects.find((p) => p.id === id) || { id, name: "ไม่ระบุโครงการ" };
 const activeProjects = () => S.projects.filter((p) => p.active);
 const isLateOrToday = (t) => t.status !== "done" && t.due && daysUntil(t.due) <= 0;
@@ -266,7 +270,7 @@ function renderLink(d) {
 
 // ---------- หน้าหลัก ----------
 function scoped() {
-  return S.tasks.filter((t) => (S.person === "all" || t.owner_id === S.person) && (S.project === "all" || t.project_id === S.project));
+  return S.tasks.filter((t) => (S.person === "all" || isOwner(t, S.person)) && (S.project === "all" || t.project_id === S.project));
 }
 function render() {
   $("addBtn").hidden = false;
@@ -276,7 +280,7 @@ function render() {
     ["late", open.filter(isLateOrToday).length, "เลย/ครบกำหนด"],
     ["soon", open.filter(isSoon).length, "ภายใน 2 วัน"],
     ["open", open.length, "ค้างทั้งหมด"],
-    ["mine", S.tasks.filter((t) => t.status !== "done" && t.owner_id === me.id).length, "งานของฉัน"],
+    ["mine", S.tasks.filter((t) => t.status !== "done" && isOwner(t, me.id)).length, "งานของฉัน"],
   ];
   const people = [["all", "ทุกคน"]].concat(S.members.map((m) => [m.id, m.id === me.id ? m.name + " (ฉัน)" : m.name]));
   const projs = [{ id: "all", name: "ทุกโครงการ" }].concat(activeProjects());
@@ -306,7 +310,7 @@ function taskHtml(t) {
     <span class="st ${t.status}" aria-label="${STATUS[t.status]}"></span>
     <span style="min-width:0;display:flex;flex-direction:column;gap:3px">
       <span class="title">${esc(t.title)}</span>
-      <span class="meta"><span>${esc(memberName(t.owner_id))}</span>·<span class="pill ${d.cls}">${d.text}</span>
+      <span class="meta"><span>${esc(ownersText(t))}</span>·<span class="pill ${d.cls}">${d.text}</span>
         ${t.status === "waiting" ? `<span class="pill wait">รอ${t.waiting_for ? " " + esc(t.waiting_for) : "คนอื่น"}</span>` : ""}
         ${t.status === "doing" ? '<span class="pill info">กำลังทำ</span>' : ""}
         ${t.status === "done" ? '<span class="pill ok">เสร็จแล้ว</span>' : ""}
@@ -320,7 +324,7 @@ function listHtml() {
   if (S.focus === "late") tasks = tasks.filter(isLateOrToday);
   if (S.focus === "soon") tasks = tasks.filter(isSoon);
   if (S.focus === "open") tasks = tasks.filter((t) => t.status !== "done");
-  if (S.focus === "mine") tasks = S.tasks.filter((t) => t.owner_id === S.me.id);
+  if (S.focus === "mine") tasks = S.tasks.filter((t) => isOwner(t, S.me.id));
   const hiddenDone = S.showDone ? 0 : tasks.filter((t) => t.status === "done").length;
   if (!S.showDone) tasks = tasks.filter((t) => t.status !== "done");
   if (!S.tasks.length) return `<div class="empty"><strong>ยังไม่มีงานในระบบ</strong>กด “เพิ่มงาน” มุมขวาล่าง แตะเลือกโครงการ คนทำ วันส่ง แล้วพิมพ์ชื่องาน</div>`;
@@ -351,18 +355,22 @@ function drawSheet() {
   $("sheetInner").innerHTML = html;
 }
 
+/** ปุ่มเลือก — current เป็น array เมื่อเลือกได้หลายอัน */
 function pickHtml(name, items, current) {
-  return `<div class="pick" data-pick="${name}">${items.map(([v, l]) => `<button type="button" data-v="${esc(v)}" aria-pressed="${v === current}">${esc(l)}</button>`).join("")}</div>`;
+  const multi = Array.isArray(current);
+  const on = (v) => (multi ? current.includes(v) : v === current);
+  return `<div class="pick" data-pick="${name}" ${multi ? "data-multi" : ""}>${items.map(([v, l]) => `<button type="button" data-v="${esc(v)}" aria-pressed="${on(v)}">${esc(l)}</button>`).join("")}</div>`;
 }
+const picked = (name) => [...document.querySelectorAll(`[data-pick="${name}"] [aria-pressed="true"]`)].map((b) => b.dataset.v);
 function formHtml(no) {
   const t = no ? S.tasks.find((x) => x.no === no) : null;
-  const v = t || { title: "", project_id: S.project !== "all" ? S.project : "", owner_id: S.person !== "all" ? S.person : S.me.id, due: "", note: "" };
+  const v = t || { title: "", project_id: S.project !== "all" ? S.project : "", owner_ids: [S.person !== "all" ? S.person : S.me.id], due: "", note: "" };
   const projs = activeProjects().map((p) => [p.id, p.name]);
   if (t && !projs.some(([id]) => id === t.project_id)) projs.push([t.project_id, project(t.project_id).name]);
   return `<h3>${t ? "แก้ไขงาน #" + t.no : "เพิ่มงาน"}</h3>
   <form id="taskForm" style="display:flex;flex-direction:column;gap:14px" novalidate>
     <div class="field"><span class="lbl">โครงการ</span>${pickHtml("project", projs, v.project_id)}</div>
-    <div class="field"><span class="lbl">ใครทำ</span>${pickHtml("owner", S.members.map((m) => [m.id, m.name]), v.owner_id)}</div>
+    <div class="field"><span class="lbl">ใครทำ (เลือกได้หลายคน)</span>${pickHtml("owner", S.members.map((m) => [m.id, m.name]), [...(v.owner_ids || [])])}</div>
     <div class="field"><span class="lbl">วันส่ง</span>${pickHtml("due", quickDates(), v.due)}
       <input id="fDue" type="date" value="${esc(v.due || "")}" aria-label="เลือกวันส่ง"></div>
     <div class="field"><label class="lbl" for="fTitle">ชื่องาน</label><input id="fTitle" maxlength="300" placeholder="เช่น ส่งแบบไฟฟ้าชั้น 2" value="${esc(v.title)}" autocomplete="off"></div>
@@ -380,10 +388,10 @@ function taskSheetHtml(t) {
   ${t.note ? `<div class="note">${esc(t.note)}</div>` : ""}
   <div class="field"><span class="lbl">สถานะ</span><div class="seg">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-status="${k}" aria-pressed="${t.status === k}">${l}</button>`).join("")}</div>
     ${t.status === "waiting" ? `<form class="inline-form" id="waitForm"><input id="fWait" maxlength="120" placeholder="รอใคร/รออะไร เช่น ลูกค้าอนุมัติ" value="${esc(t.waiting_for || "")}"><button class="btn small" type="submit">บันทึก</button></form>` : ""}</div>
-  <div class="field"><span class="lbl">ใครทำ (แตะเพื่อเปลี่ยน)</span>${pickHtml("reowner", S.members.map((m) => [m.id, m.name]), t.owner_id)}</div>
+  <div class="field"><span class="lbl">ใครทำ (แตะเพื่อเพิ่มหรือเอาออก ทำร่วมกันได้หลายคน)</span>${pickHtml("reowner", S.members.map((m) => [m.id, m.name]), [...(t.owner_ids || [])])}</div>
   <div class="field"><span class="lbl">วันส่ง (แตะเพื่อเลื่อน)</span>${pickHtml("redue", quickDates(), t.due)}
     <input id="reDue" type="date" value="${esc(t.due || "")}" aria-label="เลือกวันส่งใหม่"></div>
-  ${t.status !== "done" ? `<button type="button" class="btn primary" data-nudge>ตามงานนี้กับ ${esc(memberName(t.owner_id))}</button>` : ""}
+  ${t.status !== "done" ? `<button type="button" class="btn primary" data-nudge>ตามงานนี้กับ ${esc(ownersText(t))}</button>` : ""}
   <div class="history">
     ${t.nudges ? `<span>ถูกตามแล้ว ${t.nudges} ครั้ง${last ? ` · ล่าสุด ${esc(memberName(last.by))} ${ago(last.at)}` : ""}</span>` : ""}
     <span>สร้างโดย ${esc(memberName(t.created_by))} ${t.created_at ? ago(t.created_at) : ""}</span>
@@ -413,10 +421,9 @@ function menuHtml() {
 
 // ---------- การกระทำ ----------
 async function saveForm() {
-  const sel = (name) => document.querySelector(`[data-pick="${name}"] [aria-pressed="true"]`)?.dataset.v || "";
-  const data = { project_id: sel("project"), owner_id: sel("owner"), due: $("fDue").value || null, title: $("fTitle").value.trim(), note: $("fNote").value.trim() };
+  const data = { project_id: picked("project")[0] || "", owner_ids: picked("owner"), due: $("fDue").value || null, title: $("fTitle").value.trim(), note: $("fNote").value.trim() };
   if (!data.project_id) return toast("เลือกโครงการก่อน");
-  if (!data.owner_id) return toast("เลือกคนทำก่อน");
+  if (!data.owner_ids.length) return toast("เลือกคนทำอย่างน้อย 1 คน");
   if (!data.title) { $("fTitle").focus(); return toast("พิมพ์ชื่องานก่อน"); }
   const editing = S.sheet.kind === "task" ? S.sheet.arg : null;
   if (editing) {
@@ -424,14 +431,14 @@ async function saveForm() {
     const t = await run(() => api("PATCH", "/tasks/" + editing, data), "บันทึกแล้ว");
     if (!t) return;
     upsertTask(t); render();
-    if (before.owner_id !== t.owner_id) await say(`🔁 เปลี่ยนคนทำ #${t.no} ${t.title} → ${memberName(t.owner_id)}`);
+    if (!sameSet(before.owner_ids || [], t.owner_ids || [])) await say(`🔁 เปลี่ยนคนทำ #${t.no} ${t.title} → ${ownersText(t)}`);
     S.sheet.edit = false; drawSheet();
     return;
   }
   const t = await run(() => api("POST", "/tasks", data), "เพิ่มงานแล้ว");
   if (!t) return;
   upsertTask(t); render(); closeSheet();
-  const sent = await say(`➕ งานใหม่ #${t.no} [${project(t.project_id).name}] ${t.title}\nคนทำ: ${memberName(t.owner_id)} · ${dueInfo(t).text}`);
+  const sent = await say(`➕ งานใหม่ #${t.no} [${project(t.project_id).name}] ${t.title}\nคนทำ: ${ownersText(t)} · ${dueInfo(t).text}`);
   if (sent && S.openedForAdd) liff.closeWindow();
 }
 
@@ -462,13 +469,18 @@ document.addEventListener("click", async (e) => {
     const name = pick.dataset.pick;
     if (name === "reowner" || name === "redue") {
       const no = S.sheet.arg; const t = S.tasks.find((x) => x.no === no);
-      if (name === "reowner" && ds.v !== t.owner_id) {
-        const u = await patchTask(no, { owner_id: ds.v }, "เปลี่ยนคนทำเป็น " + memberName(ds.v));
-        if (u) await say(`🔁 เปลี่ยนคนทำ #${u.no} ${u.title} → ${memberName(u.owner_id)}`);
+      if (name === "reowner") {
+        const cur = t.owner_ids || [];
+        const adding = !cur.includes(ds.v);
+        const next = adding ? [...cur, ds.v] : cur.filter((x) => x !== ds.v);
+        if (!next.length) return toast("ต้องมีคนทำอย่างน้อย 1 คน");
+        const u = await patchTask(no, { owner_ids: next }, (adding ? "เพิ่ม " : "เอาออก ") + memberName(ds.v));
+        if (u && adding) await say(`🔁 เปลี่ยนคนทำ #${u.no} ${u.title} → ${ownersText(u)}`);
       }
       if (name === "redue" && ds.v !== t.due) await patchTask(no, { due: ds.v }, "เลื่อนวันส่งเป็น " + thDate(ds.v, true));
       return;
     }
+    if ("multi" in pick.dataset) { b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true"); return; }
     pick.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
     if (name === "due") $("fDue").value = ds.v;
     return;
@@ -541,12 +553,12 @@ function mockInit() {
     projects: [["pok-lin", "บ้านคุณป๊ก/คุณหลิน"], ["h007-008", "บ้าน007/008"], ["utt", "UTT"], ["sinta", "SINTA"], ["jotun", "JOTUN"], ["mahidol", "MAHIDOL"], ["office", "OFFICE"]]
       .map(([id, name], i) => ({ id, name, aliases: [], active: true, sort: i + 1 })),
     tasks: [
-      { no: 2, title: "ส่งแบบไฟฟ้าชั้น 2", project_id: "sinta", owner_id: "toon", due: addDays(-1), status: "todo", nudges: 1, last_nudge: { by: "ice", at: now } },
+      { no: 2, title: "ส่งแบบไฟฟ้าชั้น 2", project_id: "sinta", owner_id: "toon", owner_ids: ["toon", "ton"], due: addDays(-1), status: "todo", nudges: 1, last_nudge: { by: "ice", at: now } },
       { no: 5, title: "สั่งเหล็ก DB16", project_id: "sinta", owner_id: "ton", due: addDays(1), status: "doing", nudges: 0 },
       { no: 4, title: "ทำ BOQ งานโครงสร้าง", project_id: "mahidol", owner_id: "ice", due: addDays(6), status: "todo", nudges: 0, note: "ใช้แบบ rev.3" },
       { no: 6, title: "ตรวจงานฝ้า", project_id: "h007-008", owner_id: "pae", due: addDays(2), status: "waiting", waiting_for: "ช่างฝ้า", nudges: 0 },
       { no: 1, title: "งานแอร์", project_id: "h007-008", owner_id: "pae", due: addDays(-2), status: "done", nudges: 0, done_at: now },
-    ].map((t) => ({ waiting_for: null, note: null, last_nudge: null, created_by: "ice", created_at: now, updated_at: now, done_at: null, ...t })),
+    ].map((t) => ({ waiting_for: null, note: null, last_nudge: null, created_by: "ice", created_at: now, updated_at: now, done_at: null, owner_ids: [t.owner_id], ...t })),
   };
 }
 async function mockApi(method, path, body) {
