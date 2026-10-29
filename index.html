@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Punchlist</title>
+<meta name="theme-color" content="#06C755">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<style>
+/* Layout: phone-first single column — stats, filters, tasks grouped by project, floating add button, bottom sheets */
+:root {
+  --bg: #f2f4f3; --surface: #ffffff; --ink: #18221f; --muted: #5b6b66; --line: #d7dfdc;
+  --accent: #06c755; --accent-ink: #ffffff; --accent-soft: #e2f7ea; --accent-text: #067a37;
+  --late: #c0392b; --late-soft: #fbe5e2; --soon: #a8670a; --soon-soft: #fbefd9;
+  --info: #1d5c80; --info-soft: #dcebf3;
+  --font-display: "Anuphan", "IBM Plex Sans Thai", "Thonburi", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans Thai", "Thonburi", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111715; --surface: #1a2220; --ink: #e6eeeb; --muted: #9aaaa5; --line: #2c3834;
+    --accent: #06c755; --accent-ink: #062b15; --accent-soft: #143524; --accent-text: #5fe39a;
+    --late: #ff8a7a; --late-soft: #3d1f1b; --soon: #f0b65a; --soon-soft: #3a2c14;
+    --info: #7cc0e6; --info-soft: #18303d;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding: calc(env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 110px max(16px, env(safe-area-inset-left, 0px)); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; }
+header.top h1 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 600; margin: 0; }
+header.top .date { color: var(--muted); font-size: 0.82rem; }
+.me-btn { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px 4px 4px; font-weight: 500; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; overflow: hidden; flex: none; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.banner { background: var(--soon-soft); color: var(--soon); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-family: var(--font-display); font-size: 1.45rem; line-height: 1.1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+.stat.late b { color: var(--late); } .stat.soon b { color: var(--soon); } .stat.mine b { color: var(--accent-text); }
+.stat[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 0.85rem; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.linkbtn { background: none; border: 0; color: var(--accent-text); font-weight: 600; padding: 4px 0; }
+
+.list { display: flex; flex-direction: column; gap: 20px; }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.group h2 { font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin: 0; display: flex; align-items: baseline; gap: 8px; color: var(--info); }
+.group h2 .count { color: var(--muted); font-family: var(--font-body); font-size: 0.8rem; font-weight: 400; margin-left: auto; }
+.task { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; }
+.task.is-late { border-color: color-mix(in srgb, var(--late) 45%, var(--line)); }
+.st { margin-top: 4px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.st.doing { border-color: var(--info); background: conic-gradient(var(--info) 0 50%, transparent 50% 100%); }
+.st.waiting { border-color: var(--soon); border-style: dashed; }
+.st.done { border-color: var(--accent); background: var(--accent); }
+.task .title { font-weight: 500; overflow-wrap: anywhere; }
+.task.done .title { text-decoration: line-through; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.78rem; color: var(--muted); align-items: center; }
+.pill { border-radius: 6px; padding: 1px 7px; font-size: 0.75rem; font-weight: 600; background: var(--bg); color: var(--muted); }
+.pill.late { background: var(--late-soft); color: var(--late); }
+.pill.soon { background: var(--soon-soft); color: var(--soon); }
+.pill.ok { background: var(--accent-soft); color: var(--accent-text); }
+.pill.info { background: var(--info-soft); color: var(--info); }
+.pill.wait { background: var(--soon-soft); color: var(--soon); font-weight: 500; }
+
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 24px 18px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); font-family: var(--font-display); font-size: 1.05rem; margin-bottom: 4px; }
+
+.fab { position: fixed; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 4px); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px; padding: 14px 22px; font-weight: 600; font-size: 1rem; box-shadow: 0 6px 18px rgba(0,0,0,.18); display: flex; gap: 8px; align-items: center; z-index: 5; }
+
+.backdrop { position: fixed; inset: 0; background: rgba(8, 16, 13, .45); z-index: 20; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--surface); border-radius: 18px 18px 0 0; max-height: 90vh; overflow-y: auto;
+  padding: 10px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 22px) max(18px, env(safe-area-inset-left, 0px)); }
+.sheet-inner { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto 2px; }
+.sheet h3 { font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.lbl { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.field input, .field textarea { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; }
+.field textarea { min-height: 64px; resize: vertical; }
+.pick { display: flex; gap: 6px; flex-wrap: wrap; }
+.pick button { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 6px 13px; }
+.pick button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.seg button { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 9px 2px; font-size: 0.82rem; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 11px 16px; font-weight: 600; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--late); }
+.btn.danger.armed { background: var(--late); color: #fff; border-color: var(--late); }
+.btn.wide { flex: 1; }
+.note { white-space: pre-wrap; background: var(--bg); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; }
+.history { display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; color: var(--muted); }
+.mgr-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mgr-item span.name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.mgr-item.off span.name { color: var(--muted); text-decoration: line-through; }
+.small { font-size: 0.8rem; padding: 6px 10px; border-radius: 8px; }
+.inline-form { display: flex; gap: 8px; }
+.inline-form input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.center { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; color: var(--muted); }
+.center strong { color: var(--ink); font-family: var(--font-display); font-size: 1.15rem; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; z-index: 30; font-size: 0.9rem; max-width: calc(100% - 32px); }
+@media (max-width: 380px) { .stat b { font-size: 1.2rem; } .stat span { font-size: 0.68rem; } }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .2s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .6; } } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="center"><strong>กำลังเปิด Punchlist…</strong>รอสักครู่</div>
+</div>
+<button class="fab" id="addBtn" type="button" hidden>
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+  เพิ่มงาน
+</button>
+<div class="backdrop" id="backdrop" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden><div class="sheet-inner" id="sheetInner"></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+const LIFF_ID = "";
+const API = "https://ntzgdleoqzigreoqxroj.supabase.co/functions/v1/team-checklist-bot/api";
+const params = new URLSearchParams(location.search);
+const MOCK = params.has("mock");
+const STATUS = { todo: "ยังไม่เริ่ม", doing: "กำลังทำ", waiting: "รอคนอื่น", done: "เสร็จแล้ว" };
+
+const S = {
+  me: null, line: null, members: [], projects: [], tasks: [],
+  person: "all", project: "all", focus: null, showDone: false,
+  chat: false, openedForAdd: params.get("v") === "add", sheet: null,
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function toast(msg) { const el = $("toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 2600); }
+
+// ---------- วันที่ ----------
+function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function parseYmd(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function today0() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
+function addDays(n) { const d = today0(); d.setDate(d.getDate() + n); return ymd(d); }
+function daysUntil(s) { return s ? Math.round((parseYmd(s) - today0()) / 86400000) : null; }
+function thDate(s, wd) { return parseYmd(s).toLocaleDateString("th-TH", wd ? { weekday: "short", day: "numeric", month: "short" } : { day: "numeric", month: "short" }); }
+function dueInfo(t) {
+  const n = daysUntil(t.due);
+  if (n === null) return { cls: "", text: "ไม่กำหนดวัน", n: 9999 };
+  if (t.status === "done") return { cls: "", text: "กำหนด " + thDate(t.due), n };
+  if (n < 0) return { cls: "late", text: "เลย " + -n + " วัน", n };
+  if (n === 0) return { cls: "late", text: "ส่งวันนี้", n };
+  if (n === 1) return { cls: "soon", text: "พรุ่งนี้", n };
+  if (n === 2) return { cls: "soon", text: "อีก 2 วัน", n };
+  return { cls: "", text: "ส่ง " + thDate(t.due), n };
+}
+function ago(iso) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+  if (m < 1) return "เมื่อสักครู่"; if (m < 60) return m + " นาทีก่อน";
+  const h = Math.round(m / 60); if (h < 24) return h + " ชม.ก่อน";
+  return Math.round(h / 24) + " วันก่อน";
+}
+/** ปุ่มวันส่งด่วน เป็นคู่ [วันที่, ชื่อปุ่ม] */
+function quickDates() {
+  const toFri = (5 - today0().getDay() + 7) % 7;
+  const fri = toFri <= 1 ? [addDays(toFri + 7), "ศุกร์หน้า"] : [addDays(toFri), "ศุกร์นี้"];
+  return [[addDays(0), "วันนี้"], [addDays(1), "พรุ่งนี้"], fri, [addDays(7), "สัปดาห์หน้า"]];
+}
+/** ตัวอักษรย่อของชื่อ (ชื่อไทยที่ขึ้นต้นด้วยสระหน้า เอา 2 ตัว) */
+const initials = (name) => (/^[เแโใไ]/.test(name) ? name.slice(0, 2) : name.slice(0, 1));
+
+const memberName = (id) => S.members.find((m) => m.id === id)?.name || "ไม่ระบุคน";
+const project = (id) => S.projects.find((p) => p.id === id) || { id, name: "ไม่ระบุโครงการ" };
+const activeProjects = () => S.projects.filter((p) => p.active);
+const isLateOrToday = (t) => t.status !== "done" && t.due && daysUntil(t.due) <= 0;
+const isSoon = (t) => t.status !== "done" && t.due && daysUntil(t.due) > 0 && daysUntil(t.due) <= 2;
+
+// ---------- API ----------
+async function api(method, path, body) {
+  if (MOCK) return mockApi(method, path, body);
+  const r = await fetch(API + path, {
+    method,
+    headers: { Authorization: "Bearer " + liff.getIDToken(), ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) { liff.logout(); liff.login({ redirectUri: location.href }); throw new Error("login_required"); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || "error"), { code: j.error });
+  return j;
+}
+const ERR = {
+  title_required: "ใส่ชื่องานก่อน", bad_project: "เลือกโครงการก่อน", bad_owner: "เลือกคนทำก่อน", bad_date: "วันที่ไม่ถูกต้อง",
+  duplicate: "มีชื่อนี้อยู่แล้ว", name_required: "ใส่ชื่อก่อน", already_linked: "ชื่อนี้มีคนเลือกไปแล้ว", not_found: "ไม่เจองานนี้ อาจถูกลบไปแล้ว",
+};
+async function run(fn, okMsg) {
+  try { const r = await fn(); if (okMsg) toast(okMsg); return r ?? true; }
+  catch (e) { if (e.message !== "login_required") toast(ERR[e.code] || "บันทึกไม่สำเร็จ ลองอีกครั้ง"); return null; }
+}
+/** ส่งข้อความเข้ากลุ่ม LINE (เฉพาะตอนเปิดจากแชทกลุ่มในแอป LINE) */
+async function say(text) {
+  if (!S.chat) return false;
+  try { await liff.sendMessages([{ type: "text", text: text.slice(0, 4900) }]); return true; } catch (e) { console.warn(e); return false; }
+}
+function upsertTask(t) { const i = S.tasks.findIndex((x) => x.no === t.no); if (i >= 0) S.tasks[i] = t; else S.tasks.push(t); }
+
+// ---------- เริ่มต้น ----------
+async function start() {
+  try {
+    if (MOCK) { mockInit(); } else {
+      if (!LIFF_ID) return fatal("ยังไม่ได้ตั้งค่า LIFF ID", "");
+      await liff.init({ liffId: LIFF_ID });
+      if (params.has("liff.state")) return; // LIFF กำลังพาไปหน้าที่ถูกต้อง
+      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+      const ctx = liff.getContext();
+      S.chat = liff.isInClient() && !!ctx && (ctx.type === "group" || ctx.type === "room");
+    }
+    await load();
+  } catch (e) {
+    console.error(e);
+    fatal("เปิดไม่สำเร็จ", "ลองปิดแล้วเปิดใหม่อีกครั้ง");
+  }
+}
+async function load() {
+  let d;
+  try { d = await api("GET", "/bootstrap"); }
+  catch (e) {
+    if (e.code === "not_in_team") return fatal("บัญชี LINE นี้ยังไม่อยู่ในกลุ่มของทีม", "ให้คนในทีมเชิญคุณเข้ากลุ่ม LINE ที่มีบอท Punchlist ก่อน แล้วเปิดลิงก์นี้อีกครั้ง");
+    if (e.message === "login_required") return;
+    return fatal("โหลดข้อมูลไม่สำเร็จ", "ตรวจสอบอินเทอร์เน็ต แล้วลองใหม่อีกครั้ง");
+  }
+  if (d.needLink) return renderLink(d);
+  Object.assign(S, { me: d.me, line: d.line, members: d.members, projects: d.projects, tasks: d.tasks });
+  render();
+  if (S.openedForAdd && !S.sheet) openSheet("form");
+}
+function fatal(title, body) {
+  $("addBtn").hidden = true;
+  $("app").innerHTML = `<div class="center"><strong>${esc(title)}</strong><span>${esc(body)}</span></div>`;
+}
+
+function renderLink(d) {
+  $("addBtn").hidden = true;
+  $("app").innerHTML = `<div class="center">
+    <span class="avatar" style="width:56px;height:56px">${d.line?.picture ? `<img src="${esc(d.line.picture)}" alt="">` : "?"}</span>
+    <strong>สวัสดี ${esc(d.line?.name || "")} คุณคือใครในทีม?</strong>
+    <span>เลือกชื่อตัวเองครั้งเดียว ต่อไประบบจะจำได้เอง</span>
+    <div class="pick" style="justify-content:center">${d.unlinked.map((m) => `<button type="button" data-link="${esc(m.id)}">${esc(m.name)}</button>`).join("")}</div>
+    ${d.unlinked.length ? "" : "<span>ทุกชื่อในทีมมีคนเลือกแล้ว ให้หัวหน้าทีมเพิ่มชื่อคุณในเมนูจัดการทีม</span>"}
+  </div>`;
+}
+
+// ---------- หน้าหลัก ----------
+function scoped() {
+  return S.tasks.filter((t) => (S.person === "all" || t.owner_id === S.person) && (S.project === "all" || t.project_id === S.project));
+}
+function render() {
+  $("addBtn").hidden = false;
+  const me = S.me;
+  const open = scoped().filter((t) => t.status !== "done");
+  const stats = [
+    ["late", open.filter(isLateOrToday).length, "เลย/ครบกำหนด"],
+    ["soon", open.filter(isSoon).length, "ภายใน 2 วัน"],
+    ["open", open.length, "ค้างทั้งหมด"],
+    ["mine", S.tasks.filter((t) => t.status !== "done" && t.owner_id === me.id).length, "งานของฉัน"],
+  ];
+  const people = [["all", "ทุกคน"]].concat(S.members.map((m) => [m.id, m.id === me.id ? m.name + " (ฉัน)" : m.name]));
+  const projs = [{ id: "all", name: "ทุกโครงการ" }].concat(activeProjects());
+  $("app").innerHTML = `
+    <header class="top">
+      <div><h1>Punchlist</h1><div class="date">${esc(new Date().toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long" }))}</div></div>
+      <button class="me-btn" type="button" data-open="menu" aria-label="เมนู">
+        <span class="avatar">${S.line?.picture ? `<img src="${esc(S.line.picture)}" alt="">` : esc(initials(me.name))}</span>${esc(me.name)}
+      </button>
+    </header>
+    ${MOCK ? '<div class="banner">โหมดตัวอย่าง: ข้อมูลในหน้านี้เป็นตัวอย่าง ไม่ได้บันทึกจริง</div>' : ""}
+    <section class="stats" aria-label="สรุปงาน">${stats.map(([k, n, l]) => `<button type="button" class="stat ${k}" data-focus="${k}" aria-pressed="${S.focus === k}"><b>${n}</b><span>${l}</span></button>`).join("")}</section>
+    <div class="chips" aria-label="กรองตามคน">${people.map(([id, n]) => `<button type="button" class="chip" data-person="${esc(id)}" aria-pressed="${S.person === id}">${esc(n)}</button>`).join("")}</div>
+    <div class="chips" aria-label="กรองตามโครงการ">${projs.map((p) => `<button type="button" class="chip" data-project="${esc(p.id)}" aria-pressed="${S.project === p.id}">${esc(p.name)}</button>`).join("")}</div>
+    <div class="toolbar"><label><input type="checkbox" id="showDone" ${S.showDone ? "checked" : ""}> แสดงงานที่เสร็จแล้ว (30 วันล่าสุด)</label></div>
+    <main class="list" id="list">${listHtml()}</main>`;
+}
+
+function sortTasks(a, b) {
+  if ((a.status === "done") !== (b.status === "done")) return a.status === "done" ? 1 : -1;
+  const d = dueInfo(a).n - dueInfo(b).n;
+  return d || a.no - b.no;
+}
+function taskHtml(t) {
+  const d = dueInfo(t);
+  return `<button type="button" class="task ${t.status === "done" ? "done" : ""} ${d.cls === "late" ? "is-late" : ""}" data-task="${t.no}">
+    <span class="st ${t.status}" aria-label="${STATUS[t.status]}"></span>
+    <span style="min-width:0;display:flex;flex-direction:column;gap:3px">
+      <span class="title">${esc(t.title)}</span>
+      <span class="meta"><span>${esc(memberName(t.owner_id))}</span>·<span class="pill ${d.cls}">${d.text}</span>
+        ${t.status === "waiting" ? `<span class="pill wait">รอ${t.waiting_for ? " " + esc(t.waiting_for) : "คนอื่น"}</span>` : ""}
+        ${t.status === "doing" ? '<span class="pill info">กำลังทำ</span>' : ""}
+        ${t.status === "done" ? '<span class="pill ok">เสร็จแล้ว</span>' : ""}
+        ${t.nudges && t.status !== "done" ? `<span class="pill info">ถูกตาม ${t.nudges} ครั้ง</span>` : ""}
+        <span style="margin-left:auto">#${t.no}</span></span>
+    </span>
+  </button>`;
+}
+function listHtml() {
+  let tasks = scoped();
+  if (S.focus === "late") tasks = tasks.filter(isLateOrToday);
+  if (S.focus === "soon") tasks = tasks.filter(isSoon);
+  if (S.focus === "open") tasks = tasks.filter((t) => t.status !== "done");
+  if (S.focus === "mine") tasks = S.tasks.filter((t) => t.owner_id === S.me.id);
+  const hiddenDone = S.showDone ? 0 : tasks.filter((t) => t.status === "done").length;
+  if (!S.showDone) tasks = tasks.filter((t) => t.status !== "done");
+  if (!S.tasks.length) return `<div class="empty"><strong>ยังไม่มีงานในระบบ</strong>กด “เพิ่มงาน” มุมขวาล่าง แตะเลือกโครงการ คนทำ วันส่ง แล้วพิมพ์ชื่องาน</div>`;
+  if (!tasks.length) return `<div class="empty"><strong>ไม่มีงานที่ตรงกับตัวกรองนี้</strong>${S.focus ? "แตะการ์ดสรุปอีกครั้งเพื่อดูงานทั้งหมด" : "ลองเลือก “ทุกคน” หรือ “ทุกโครงการ”"}</div>`;
+  const order = S.projects.map((p) => p.id);
+  const groups = new Map();
+  tasks.slice().sort(sortTasks).forEach((t) => { if (!groups.has(t.project_id)) groups.set(t.project_id, []); groups.get(t.project_id).push(t); });
+  const keys = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+  let html = keys.map((k) => {
+    const items = groups.get(k);
+    const late = items.filter(isLateOrToday).length;
+    return `<section class="group"><h2>${esc(project(k).name)}<span class="count">${items.length} งาน${late ? ` · <span style="color:var(--late)">เลยกำหนด ${late}</span>` : ""}</span></h2>${items.map(taskHtml).join("")}</section>`;
+  }).join("");
+  if (hiddenDone) html += `<div class="toolbar"><span>ซ่อนงานที่เสร็จแล้ว ${hiddenDone} งาน</span><button type="button" class="linkbtn" data-showdone>แสดง</button></div>`;
+  return html;
+}
+
+// ---------- แผ่นด้านล่าง ----------
+function openSheet(kind, arg) { S.sheet = { kind, arg, armed: null, edit: false }; drawSheet(); $("backdrop").hidden = false; $("sheet").hidden = false; }
+function closeSheet() { S.sheet = null; $("backdrop").hidden = true; $("sheet").hidden = true; }
+function drawSheet() {
+  if (!S.sheet) return;
+  const { kind, arg } = S.sheet;
+  let html = '<div class="grab"></div>';
+  if (kind === "form") html += formHtml(arg);
+  if (kind === "task") { const t = S.tasks.find((x) => x.no === arg); if (!t) return closeSheet(); html += S.sheet.edit ? formHtml(arg) : taskSheetHtml(t); }
+  if (kind === "menu") html += menuHtml();
+  $("sheetInner").innerHTML = html;
+}
+
+function pickHtml(name, items, current) {
+  return `<div class="pick" data-pick="${name}">${items.map(([v, l]) => `<button type="button" data-v="${esc(v)}" aria-pressed="${v === current}">${esc(l)}</button>`).join("")}</div>`;
+}
+function formHtml(no) {
+  const t = no ? S.tasks.find((x) => x.no === no) : null;
+  const v = t || { title: "", project_id: S.project !== "all" ? S.project : "", owner_id: S.person !== "all" ? S.person : S.me.id, due: "", note: "" };
+  const projs = activeProjects().map((p) => [p.id, p.name]);
+  if (t && !projs.some(([id]) => id === t.project_id)) projs.push([t.project_id, project(t.project_id).name]);
+  return `<h3>${t ? "แก้ไขงาน #" + t.no : "เพิ่มงาน"}</h3>
+  <form id="taskForm" style="display:flex;flex-direction:column;gap:14px" novalidate>
+    <div class="field"><span class="lbl">โครงการ</span>${pickHtml("project", projs, v.project_id)}</div>
+    <div class="field"><span class="lbl">ใครทำ</span>${pickHtml("owner", S.members.map((m) => [m.id, m.name]), v.owner_id)}</div>
+    <div class="field"><span class="lbl">วันส่ง</span>${pickHtml("due", quickDates(), v.due)}
+      <input id="fDue" type="date" value="${esc(v.due || "")}" aria-label="เลือกวันส่ง"></div>
+    <div class="field"><label class="lbl" for="fTitle">ชื่องาน</label><input id="fTitle" maxlength="300" placeholder="เช่น ส่งแบบไฟฟ้าชั้น 2" value="${esc(v.title)}" autocomplete="off"></div>
+    <div class="field"><label class="lbl" for="fNote">รายละเอียด (ไม่ใส่ก็ได้)</label><textarea id="fNote" maxlength="2000" placeholder="เช่น รอผู้รับเหมายืนยันแบบ">${esc(v.note || "")}</textarea></div>
+    <div class="row"><button type="button" class="btn" data-cancel>ยกเลิก</button><button type="submit" class="btn primary wide">${t ? "บันทึก" : "เพิ่มงาน"}</button></div>
+  </form>`;
+}
+
+function taskSheetHtml(t) {
+  const d = dueInfo(t);
+  const last = t.last_nudge;
+  return `<div class="meta"><b style="color:var(--info)">${esc(project(t.project_id).name)}</b> · #${t.no}</div>
+  <h3>${esc(t.title)}</h3>
+  <div class="meta"><span class="pill ${d.cls}">${d.text}</span>${t.status === "waiting" ? `<span class="pill wait">รอ${t.waiting_for ? " " + esc(t.waiting_for) : "คนอื่น"}</span>` : ""}</div>
+  ${t.note ? `<div class="note">${esc(t.note)}</div>` : ""}
+  <div class="field"><span class="lbl">สถานะ</span><div class="seg">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-status="${k}" aria-pressed="${t.status === k}">${l}</button>`).join("")}</div>
+    ${t.status === "waiting" ? `<form class="inline-form" id="waitForm"><input id="fWait" maxlength="120" placeholder="รอใคร/รออะไร เช่น ลูกค้าอนุมัติ" value="${esc(t.waiting_for || "")}"><button class="btn small" type="submit">บันทึก</button></form>` : ""}</div>
+  <div class="field"><span class="lbl">ใครทำ (แตะเพื่อเปลี่ยน)</span>${pickHtml("reowner", S.members.map((m) => [m.id, m.name]), t.owner_id)}</div>
+  <div class="field"><span class="lbl">วันส่ง (แตะเพื่อเลื่อน)</span>${pickHtml("redue", quickDates(), t.due)}
+    <input id="reDue" type="date" value="${esc(t.due || "")}" aria-label="เลือกวันส่งใหม่"></div>
+  ${t.status !== "done" ? `<button type="button" class="btn primary" data-nudge>ตามงานนี้กับ ${esc(memberName(t.owner_id))}</button>` : ""}
+  <div class="history">
+    ${t.nudges ? `<span>ถูกตามแล้ว ${t.nudges} ครั้ง${last ? ` · ล่าสุด ${esc(memberName(last.by))} ${ago(last.at)}` : ""}</span>` : ""}
+    <span>สร้างโดย ${esc(memberName(t.created_by))} ${t.created_at ? ago(t.created_at) : ""}</span>
+  </div>
+  <div class="row"><button type="button" class="btn danger ${S.sheet.armed === "task" ? "armed" : ""}" data-delete>${S.sheet.armed === "task" ? "แตะอีกครั้งเพื่อลบ" : "ลบ"}</button>
+    <button type="button" class="btn wide" data-edit>แก้ชื่อ/รายละเอียด</button><button type="button" class="btn" data-cancel>ปิด</button></div>`;
+}
+
+function menuHtml() {
+  const openCount = (id) => S.tasks.filter((t) => t.project_id === id && t.status !== "done").length;
+  return `<h3>จัดการโครงการและทีม</h3>
+  <div class="field"><span class="lbl">โครงการ</span>
+    <div>${S.projects.map((p) => `<div class="mgr-item ${p.active ? "" : "off"}"><span class="name">${esc(p.name)}</span>
+      <span class="lbl" style="font-weight:400">${openCount(p.id)} ค้าง</span>
+      <button type="button" class="btn small" data-toggle-project="${esc(p.id)}">${p.active ? "ปิดโครงการ" : "เปิดอีกครั้ง"}</button></div>`).join("")}</div>
+    <form class="inline-form" id="projForm"><input id="newProj" maxlength="60" placeholder="ชื่อโครงการใหม่ เช่น Central Rama 9"><button class="btn primary small" type="submit">เพิ่ม</button></form>
+  </div>
+  <div class="field"><span class="lbl">สมาชิกทีม</span>
+    <div>${S.members.map((m) => `<div class="mgr-item"><span class="name">${esc(m.name)}${m.id === S.me.id ? " (ฉัน)" : ""}</span>
+      <span class="pill ${m.linked ? "ok" : "wait"}">${m.linked ? "ลงชื่อแล้ว" : "ยังไม่ลงชื่อ"}</span>
+      ${m.linked && m.id !== S.me.id ? `<button type="button" class="btn small ${S.sheet.armed === m.id ? "danger armed" : ""}" data-unlink="${esc(m.id)}">${S.sheet.armed === m.id ? "แตะอีกครั้ง" : "รีเซ็ต"}</button>` : ""}</div>`).join("")}</div>
+    <form class="inline-form" id="memForm"><input id="newMem" maxlength="30" placeholder="ชื่อเล่นสมาชิกใหม่"><button class="btn primary small" type="submit">เพิ่ม</button></form>
+    <span class="lbl" style="font-weight:400">“รีเซ็ต” ใช้เมื่อสมาชิกเปลี่ยนบัญชี LINE หรือเลือกชื่อผิด ครั้งต่อไปที่เปิดเว็บ เขาจะเลือกชื่อใหม่ได้</span>
+  </div>
+  <button type="button" class="btn" data-cancel>ปิด</button>`;
+}
+
+// ---------- การกระทำ ----------
+async function saveForm() {
+  const sel = (name) => document.querySelector(`[data-pick="${name}"] [aria-pressed="true"]`)?.dataset.v || "";
+  const data = { project_id: sel("project"), owner_id: sel("owner"), due: $("fDue").value || null, title: $("fTitle").value.trim(), note: $("fNote").value.trim() };
+  if (!data.project_id) return toast("เลือกโครงการก่อน");
+  if (!data.owner_id) return toast("เลือกคนทำก่อน");
+  if (!data.title) { $("fTitle").focus(); return toast("พิมพ์ชื่องานก่อน"); }
+  const editing = S.sheet.kind === "task" ? S.sheet.arg : null;
+  if (editing) {
+    const before = S.tasks.find((x) => x.no === editing);
+    const t = await run(() => api("PATCH", "/tasks/" + editing, data), "บันทึกแล้ว");
+    if (!t) return;
+    upsertTask(t); render();
+    if (before.owner_id !== t.owner_id) await say(`🔁 เปลี่ยนคนทำ #${t.no} ${t.title} → ${memberName(t.owner_id)}`);
+    S.sheet.edit = false; drawSheet();
+    return;
+  }
+  const t = await run(() => api("POST", "/tasks", data), "เพิ่มงานแล้ว");
+  if (!t) return;
+  upsertTask(t); render(); closeSheet();
+  const sent = await say(`➕ งานใหม่ #${t.no} [${project(t.project_id).name}] ${t.title}\nคนทำ: ${memberName(t.owner_id)} · ${dueInfo(t).text}`);
+  if (sent && S.openedForAdd) liff.closeWindow();
+}
+
+async function patchTask(no, data, okMsg) {
+  const t = await run(() => api("PATCH", "/tasks/" + no, data), okMsg);
+  if (t) { upsertTask(t); render(); drawSheet(); }
+  return t;
+}
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const ds = b.dataset;
+  if (b.id === "addBtn") return openSheet("form");
+  if ("cancel" in ds) { if (S.sheet?.kind === "task" && S.sheet.edit) { S.sheet.edit = false; return drawSheet(); } return closeSheet(); }
+  if (ds.open === "menu") return openSheet("menu");
+  if (ds.focus) { S.focus = S.focus === ds.focus ? null : ds.focus; return render(); }
+  if (ds.person) { S.person = ds.person; return render(); }
+  if (ds.project) { S.project = ds.project; return render(); }
+  if ("showdone" in ds) { S.showDone = true; return render(); }
+  if (ds.task) return openSheet("task", +ds.task);
+  if (ds.link) {
+    const r = await run(() => api("POST", "/link", { member_id: ds.link }));
+    if (r) { toast("สวัสดี " + r.me.name); await load(); }
+    return;
+  }
+  const pick = b.closest("[data-pick]");
+  if (pick) {
+    const name = pick.dataset.pick;
+    if (name === "reowner" || name === "redue") {
+      const no = S.sheet.arg; const t = S.tasks.find((x) => x.no === no);
+      if (name === "reowner" && ds.v !== t.owner_id) {
+        const u = await patchTask(no, { owner_id: ds.v }, "เปลี่ยนคนทำเป็น " + memberName(ds.v));
+        if (u) await say(`🔁 เปลี่ยนคนทำ #${u.no} ${u.title} → ${memberName(u.owner_id)}`);
+      }
+      if (name === "redue" && ds.v !== t.due) await patchTask(no, { due: ds.v }, "เลื่อนวันส่งเป็น " + thDate(ds.v, true));
+      return;
+    }
+    pick.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    if (name === "due") $("fDue").value = ds.v;
+    return;
+  }
+  if (ds.toggleProject) {
+    const p = S.projects.find((x) => x.id === ds.toggleProject);
+    const r = await run(() => api("PATCH", "/projects/" + p.id, { active: !p.active }), p.active ? "ปิดโครงการ " + p.name + " แล้ว" : "เปิดโครงการ " + p.name + " อีกครั้ง");
+    if (r) { Object.assign(p, r); if (!p.active && S.project === p.id) S.project = "all"; render(); drawSheet(); }
+    return;
+  }
+  if (ds.unlink) {
+    if (S.sheet.armed !== ds.unlink) { S.sheet.armed = ds.unlink; return drawSheet(); }
+    const r = await run(() => api("PATCH", "/members/" + ds.unlink, { unlink: true }), "รีเซ็ตแล้ว");
+    if (r) { S.members.find((m) => m.id === ds.unlink).linked = false; S.sheet.armed = null; drawSheet(); }
+    return;
+  }
+  if (S.sheet?.kind !== "task") return;
+  const no = S.sheet.arg; const t = S.tasks.find((x) => x.no === no);
+  if (ds.status && ds.status !== t.status) {
+    const u = await patchTask(no, { status: ds.status }, ds.status === "done" ? "ปิดงานแล้ว" : "เปลี่ยนสถานะเป็น " + STATUS[ds.status]);
+    if (u && ds.status === "done") await say(`✅ ปิดงาน #${u.no} ${u.title} แล้ว`);
+    return;
+  }
+  if ("nudge" in ds) {
+    if (await say("ตาม " + no)) { toast("ส่งการตามเข้ากลุ่มแล้ว"); setTimeout(refreshTasks, 1500); return; }
+    await patchLike(() => api("POST", `/tasks/${no}/nudge`), "บันทึกการตามแล้ว");
+    return;
+  }
+  if ("edit" in ds) { S.sheet.edit = true; return drawSheet(); }
+  if ("delete" in ds) {
+    if (S.sheet.armed !== "task") { S.sheet.armed = "task"; drawSheet(); setTimeout(() => { if (S.sheet?.armed === "task") { S.sheet.armed = null; drawSheet(); } }, 4000); return; }
+    const r = await run(() => api("DELETE", "/tasks/" + no), "ลบงานแล้ว");
+    if (r) { S.tasks = S.tasks.filter((x) => x.no !== no); render(); closeSheet(); }
+  }
+});
+async function patchLike(fn, msg) { const t = await run(fn, msg); if (t) { upsertTask(t); render(); drawSheet(); } }
+async function refreshTasks() { if (MOCK) return; const d = await api("GET", "/bootstrap").catch(() => null); if (d?.tasks) { S.tasks = d.tasks; render(); drawSheet(); } }
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "showDone") { S.showDone = e.target.checked; render(); }
+  if (e.target.id === "fDue") document.querySelectorAll('[data-pick="due"] button').forEach((x) => x.setAttribute("aria-pressed", x.dataset.v === e.target.value));
+  if (e.target.id === "reDue" && e.target.value && S.sheet?.kind === "task") patchTask(S.sheet.arg, { due: e.target.value }, "เลื่อนวันส่งเป็น " + thDate(e.target.value, true));
+});
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.id === "taskForm") return saveForm();
+  if (f.id === "waitForm") return patchTask(S.sheet.arg, { waiting_for: $("fWait").value.trim() }, "บันทึกแล้ว");
+  if (f.id === "projForm") {
+    const name = $("newProj").value.trim(); if (!name) return toast("พิมพ์ชื่อโครงการก่อน");
+    const p = await run(() => api("POST", "/projects", { name }), "เพิ่มโครงการ " + name + " แล้ว");
+    if (p) { S.projects.push(p); render(); drawSheet(); }
+  }
+  if (f.id === "memForm") {
+    const name = $("newMem").value.trim(); if (!name) return toast("พิมพ์ชื่อเล่นก่อน");
+    const m = await run(() => api("POST", "/members", { name }), "เพิ่ม " + name + " แล้ว");
+    if (m) { S.members.push(m); render(); drawSheet(); }
+  }
+});
+$("backdrop").addEventListener("click", closeSheet);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.sheet) closeSheet(); });
+
+// ---------- โหมดตัวอย่าง (?mock) ----------
+let MDB = null;
+function mockInit() {
+  const now = new Date().toISOString();
+  MDB = {
+    me: { id: "ice", name: "ไอซ์" }, line: { name: "Ice", picture: "" },
+    members: [["ice", "ไอซ์"], ["toon", "ตูน"], ["toto", "โตโต้"], ["pae", "พี่แป๊ะ"], ["ton", "ต้น"]].map(([id, name], i) => ({ id, name, linked: i < 3 })),
+    projects: [["pok-lin", "บ้านคุณป๊ก/คุณหลิน"], ["h007-008", "บ้าน007/008"], ["utt", "UTT"], ["sinta", "SINTA"], ["jotun", "JOTUN"], ["mahidol", "MAHIDOL"], ["office", "OFFICE"]]
+      .map(([id, name], i) => ({ id, name, aliases: [], active: true, sort: i + 1 })),
+    tasks: [
+      { no: 2, title: "ส่งแบบไฟฟ้าชั้น 2", project_id: "sinta", owner_id: "toon", due: addDays(-1), status: "todo", nudges: 1, last_nudge: { by: "ice", at: now } },
+      { no: 5, title: "สั่งเหล็ก DB16", project_id: "sinta", owner_id: "ton", due: addDays(1), status: "doing", nudges: 0 },
+      { no: 4, title: "ทำ BOQ งานโครงสร้าง", project_id: "mahidol", owner_id: "ice", due: addDays(6), status: "todo", nudges: 0, note: "ใช้แบบ rev.3" },
+      { no: 6, title: "ตรวจงานฝ้า", project_id: "h007-008", owner_id: "pae", due: addDays(2), status: "waiting", waiting_for: "ช่างฝ้า", nudges: 0 },
+      { no: 1, title: "งานแอร์", project_id: "h007-008", owner_id: "pae", due: addDays(-2), status: "done", nudges: 0, done_at: now },
+    ].map((t) => ({ waiting_for: null, note: null, last_nudge: null, created_by: "ice", created_at: now, updated_at: now, done_at: null, ...t })),
+  };
+}
+async function mockApi(method, path, body) {
+  await new Promise((r) => setTimeout(r, 150));
+  const fail = (code) => { throw Object.assign(new Error(code), { code }); };
+  let m;
+  if (path === "/bootstrap") return JSON.parse(JSON.stringify(MDB));
+  if (method === "POST" && path === "/tasks") {
+    const no = Math.max(0, ...MDB.tasks.map((t) => t.no)) + 1;
+    const t = { no, status: "todo", nudges: 0, last_nudge: null, waiting_for: null, created_by: MDB.me.id, created_at: new Date().toISOString(), ...body };
+    MDB.tasks.push(t); return { ...t };
+  }
+  if ((m = path.match(/^\/tasks\/(\d+)$/))) {
+    const t = MDB.tasks.find((x) => x.no === +m[1]) || fail("not_found");
+    if (method === "DELETE") { MDB.tasks = MDB.tasks.filter((x) => x !== t); return { ok: true }; }
+    Object.assign(t, body); return { ...t };
+  }
+  if ((m = path.match(/^\/tasks\/(\d+)\/nudge$/))) {
+    const t = MDB.tasks.find((x) => x.no === +m[1]); t.nudges++; t.last_nudge = { by: MDB.me.id, at: new Date().toISOString() }; return { ...t };
+  }
+  if (method === "POST" && path === "/projects") { const p = { id: "p" + Date.now(), name: body.name, aliases: [], active: true, sort: 99 }; MDB.projects.push(p); return { ...p }; }
+  if ((m = path.match(/^\/projects\/(.+)$/))) { const p = MDB.projects.find((x) => x.id === m[1]); Object.assign(p, body); return { ...p }; }
+  if (method === "POST" && path === "/members") { const x = { id: "m" + Date.now(), name: body.name, linked: false }; MDB.members.push(x); return { ...x }; }
+  if ((m = path.match(/^\/members\/(.+)$/))) return { ok: true };
+  fail("not_found");
+}
+
+start();
+</script>
+</body>
+</html>
