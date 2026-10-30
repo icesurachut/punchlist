@@ -57,6 +57,7 @@ header.top .date { color: var(--muted); font-size: 0.82rem; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 0.85rem; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip.add { border-style: dashed; border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
 .linkbtn { background: none; border: 0; color: var(--accent-text); font-weight: 600; padding: 4px 0; }
 
@@ -294,7 +295,7 @@ function render() {
     ${MOCK ? '<div class="banner">โหมดตัวอย่าง: ข้อมูลในหน้านี้เป็นตัวอย่าง ไม่ได้บันทึกจริง</div>' : ""}
     <section class="stats" aria-label="สรุปงาน">${stats.map(([k, n, l]) => `<button type="button" class="stat ${k}" data-focus="${k}" aria-pressed="${S.focus === k}"><b>${n}</b><span>${l}</span></button>`).join("")}</section>
     <div class="chips" aria-label="กรองตามคน">${people.map(([id, n]) => `<button type="button" class="chip" data-person="${esc(id)}" aria-pressed="${S.person === id}">${esc(n)}</button>`).join("")}</div>
-    <div class="chips" aria-label="กรองตามโครงการ">${projs.map((p) => `<button type="button" class="chip" data-project="${esc(p.id)}" aria-pressed="${S.project === p.id}">${esc(p.name)}</button>`).join("")}</div>
+    <div class="chips" aria-label="กรองตามโครงการ">${projs.map((p) => `<button type="button" class="chip" data-project="${esc(p.id)}" aria-pressed="${S.project === p.id}">${esc(p.name)}</button>`).join("")}<button type="button" class="chip add" data-quickproj>＋ เพิ่มโครงการ</button></div>
     <div class="toolbar"><label><input type="checkbox" id="showDone" ${S.showDone ? "checked" : ""}> แสดงงานที่เสร็จแล้ว (30 วันล่าสุด)</label></div>
     <main class="list" id="list">${listHtml()}</main>`;
 }
@@ -352,6 +353,10 @@ function drawSheet() {
   if (kind === "form") html += formHtml(arg);
   if (kind === "task") { const t = S.tasks.find((x) => x.no === arg); if (!t) return closeSheet(); html += S.sheet.edit ? formHtml(arg) : taskSheetHtml(t); }
   if (kind === "menu") html += menuHtml();
+  if (kind === "project") html += `<h3>เพิ่มโครงการใหม่</h3>
+    <form class="inline-form" id="projQuickForm"><input id="quickProjName" maxlength="60" placeholder="ชื่อโครงการ เช่น บ้านคุณเอ" autocomplete="off"><button class="btn primary" type="submit">เพิ่ม</button></form>
+    <span class="lbl" style="font-weight:400">เพิ่มแล้วจะเปิดฟอร์มเพิ่มงานของโครงการนี้ให้ทันที ปิดโครงการที่จบแล้วได้ที่เมนูจัดการ (แตะชื่อของคุณมุมขวาบน)</span>
+    <button type="button" class="btn" data-cancel>ยกเลิก</button>`;
   $("sheetInner").innerHTML = html;
 }
 
@@ -369,7 +374,9 @@ function formHtml(no) {
   if (t && !projs.some(([id]) => id === t.project_id)) projs.push([t.project_id, project(t.project_id).name]);
   return `<h3>${t ? "แก้ไขงาน #" + t.no : "เพิ่มงาน"}</h3>
   <form id="taskForm" style="display:flex;flex-direction:column;gap:14px" novalidate>
-    <div class="field"><span class="lbl">โครงการ</span>${pickHtml("project", projs, v.project_id)}</div>
+    <div class="field"><span class="lbl">โครงการ</span>${pickHtml("project", projs, v.project_id)}
+      <button type="button" class="linkbtn" data-newproj style="align-self:flex-start">＋ โครงการใหม่</button>
+      <div class="inline-form" id="newProjRow" hidden><input id="newProjName" maxlength="60" placeholder="ชื่อโครงการใหม่ เช่น บ้านคุณเอ" autocomplete="off"><button type="button" class="btn primary small" data-addproj>เพิ่ม</button></div></div>
     <div class="field"><span class="lbl">ใครทำ (เลือกได้หลายคน)</span>${pickHtml("owner", S.members.map((m) => [m.id, m.name]), [...(v.owner_ids || [])])}</div>
     <div class="field"><span class="lbl">วันส่ง</span>${pickHtml("due", quickDates(), v.due)}
       <input id="fDue" type="date" value="${esc(v.due || "")}" aria-label="เลือกวันส่ง"></div>
@@ -437,9 +444,31 @@ async function saveForm() {
   }
   const t = await run(() => api("POST", "/tasks", data), "เพิ่มงานแล้ว");
   if (!t) return;
+  // ถ้าตัวกรองที่เปิดอยู่จะซ่อนงานใหม่ ให้เปลี่ยนไปแสดงงานนั้น
+  if (S.project !== "all" && S.project !== t.project_id) S.project = t.project_id;
+  if (S.person !== "all" && !isOwner(t, S.person)) S.person = "all";
   upsertTask(t); render(); closeSheet();
   const sent = await say(`➕ งานใหม่ #${t.no} [${project(t.project_id).name}] ${t.title}\nคนทำ: ${ownersText(t)} · ${dueInfo(t).text}`);
   if (sent && S.openedForAdd) liff.closeWindow();
+}
+
+/** สร้างโครงการใหม่ คืนค่าโครงการ หรือ null ถ้าไม่สำเร็จ */
+async function createProject(name) {
+  if (!name) return toast("พิมพ์ชื่อโครงการก่อน"), null;
+  const p = await run(() => api("POST", "/projects", { name }), "เพิ่มโครงการ " + name + " แล้ว");
+  if (p) S.projects.push(p);
+  return p;
+}
+/** เพิ่มโครงการจากในฟอร์มเพิ่มงาน แล้วเลือกให้เลย โดยไม่ล้างที่กรอกไว้ */
+async function addProjectInline() {
+  const p = await createProject($("newProjName").value.trim());
+  if (!p) return $("newProjName").focus();
+  const pick = document.querySelector('[data-pick="project"]');
+  pick.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+  pick.insertAdjacentHTML("beforeend", `<button type="button" data-v="${esc(p.id)}" aria-pressed="true">${esc(p.name)}</button>`);
+  $("newProjName").value = "";
+  $("newProjRow").hidden = true;
+  render();
 }
 
 async function patchTask(no, data, okMsg) {
@@ -464,6 +493,9 @@ document.addEventListener("click", async (e) => {
     if (r) { toast("สวัสดี " + r.me.name); await load(); }
     return;
   }
+  if ("newproj" in ds) { $("newProjRow").hidden = false; $("newProjName").focus(); return; }
+  if ("addproj" in ds) return addProjectInline();
+  if ("quickproj" in ds) { openSheet("project"); setTimeout(() => $("quickProjName")?.focus(), 50); return; }
   const pick = b.closest("[data-pick]");
   if (pick) {
     const name = pick.dataset.pick;
@@ -529,6 +561,14 @@ document.addEventListener("submit", async (e) => {
   const f = e.target;
   if (f.id === "taskForm") return saveForm();
   if (f.id === "waitForm") return patchTask(S.sheet.arg, { waiting_for: $("fWait").value.trim() }, "บันทึกแล้ว");
+  if (f.id === "projQuickForm") {
+    const p = await createProject($("quickProjName").value.trim());
+    if (!p) return $("quickProjName").focus();
+    S.project = p.id;
+    render();
+    openSheet("form");
+    return;
+  }
   if (f.id === "projForm") {
     const name = $("newProj").value.trim(); if (!name) return toast("พิมพ์ชื่อโครงการก่อน");
     const p = await run(() => api("POST", "/projects", { name }), "เพิ่มโครงการ " + name + " แล้ว");
@@ -541,7 +581,11 @@ document.addEventListener("submit", async (e) => {
   }
 });
 $("backdrop").addEventListener("click", closeSheet);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && S.sheet) closeSheet(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && S.sheet) closeSheet();
+  // กด Enter ในช่องโครงการใหม่ = เพิ่มโครงการ ไม่ใช่บันทึกงาน
+  if (e.key === "Enter" && e.target.id === "newProjName") { e.preventDefault(); addProjectInline(); }
+});
 
 // ---------- โหมดตัวอย่าง (?mock) ----------
 let MDB = null;
